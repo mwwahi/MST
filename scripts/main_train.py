@@ -11,6 +11,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 
 from mst.data.datasets.dataset_3d_duke import DUKE_Dataset3D
 from mst.data.datasets.dataset_3d_lidc import LIDC_Dataset3D
+# from mst.data.datasets.dataset_3d_luna25 import LUNA25_Dataset3D
 from mst.data.datasets.dataset_3d_mrnet import MRNet_Dataset3D
 
 from mst.data.datamodules import DataModule
@@ -22,6 +23,8 @@ def get_dataset(name, split, **kwargs):
         return DUKE_Dataset3D(split=split, **kwargs)
     elif name == 'LIDC':
         return LIDC_Dataset3D(split=split, **kwargs)
+    # elif name == 'LUNA25':
+    #     return LUNA25_Dataset3D(split=split, **kwargs)
     elif name == 'MRNet':
         return MRNet_Dataset3D(split=split, **kwargs)
     else:
@@ -104,8 +107,11 @@ if __name__ == "__main__":
         save_top_k=1,
         mode=min_max,
     )
+    
+    from pytorch_lightning.strategies import DDPStrategy
     trainer = Trainer(
         accelerator=accelerator,
+        strategy=DDPStrategy(find_unused_parameters=True),  # 👈 this is the fix
         accumulate_grad_batches=accumulate_grad_batches,
         precision='16-mixed',
         default_root_dir=str(path_run_dir),

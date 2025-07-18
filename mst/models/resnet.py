@@ -25,6 +25,20 @@ class GetLast(nn.Module):
 class ResNet(BasicClassifier):
     def __init__(self, in_ch, out_ch, spatial_dims=3, model=34, pretrained=False, kwargs_resnet={}, **kwargs):
         emb_ch = kwargs.pop('emb_ch', out_ch)
+        
+        ### fix for additional kwargs issue
+        kwargs.pop('save_attn', None)
+        kwargs.pop('rotary_positional_encoding', None)
+        kwargs.pop('model_size', None)
+        kwargs.pop('use_registers', None)
+        kwargs.pop('use_bottleneck', None)
+        kwargs.pop('use_slice_pos_emb', None)
+        kwargs.pop('enable_linear', None)
+        kwargs.pop('enable_trans', None)
+        kwargs.pop('slice_fusion', None)
+        kwargs.pop('freeze', None)
+        print(kwargs)
+
         super().__init__(in_ch, out_ch, spatial_dims, **kwargs)
         
         self.attention_maps = []

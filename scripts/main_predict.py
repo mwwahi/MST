@@ -106,7 +106,8 @@ def run_pred(model, batch, save_attn=False, use_softmax=True, use_tta=False):
     elif isinstance(model, DinoV2ClassifierSlice):
         pred_func = _pred_trans
 
-    pred, weight, weight_slice = pred_func(model, source, save_attn, use_softmax)    
+    # pred, weight, weight_slice = pred_func(model, source, save_attn, use_softmax)    
+    pred, weight, weight_slice = pred_func(model, source, src_key_padding_mask, save_attn, use_softmax)    
 
     if use_tta:
         for flip_dim in [(2,), (3,), (4,), (2,3), (2,4), (3,4), (2,3,4),]:
@@ -176,6 +177,7 @@ if __name__ == "__main__":
 
 
     # ------------ Initialize Model ------------
+    print("Model name", model_name)
     model = get_model(model_name).load_best_checkpoint(path_run)
     model.to(device)
     model.eval()

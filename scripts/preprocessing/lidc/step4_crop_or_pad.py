@@ -33,17 +33,18 @@ def preprocess(path_file):
 
 
 if __name__ == "__main__":
-    path_root = Path('/home/gustav/Coscine_Public/LIDC-IDRI/')
+    # path_root = Path('/home/gustav/Coscine_Public/LIDC-IDRI/')
+    path_root = Path('/radraid2/mwahianwar/LIDC')
     path_in = path_root/'preprocessed/data'
     path_out = path_root/'preprocessed_crop/data'
     path_out.mkdir(parents=True, exist_ok=True)
     files = list(path_in.rglob('img.nii.gz'))  # Convert the iterator to a list
 
     # Option 1: Multi-CPU
-    with Pool() as pool:
-        for _ in tqdm(pool.imap_unordered(preprocess, files), total=len(files)):
-            pass
+    # with Pool() as pool:
+    #     for _ in tqdm(pool.imap_unordered(preprocess, files), total=len(files)):
+    #         pass
 
     # Option 2: Single-CPU (if you need a coffee break)
-    # for file in tqdm(files):
-    #     preprocess(file)
+    for file in tqdm(files):
+        preprocess(file)

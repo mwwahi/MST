@@ -143,7 +143,9 @@ class DinoV2ClassifierSlice(BasicClassifier):
         if self.slice_fusion_type == 'transformer':
             x = torch.concat([self.cls_token.repeat(B, 1, 1), x], dim=1)
  
-            if src_key_padding_mask is not None: 
+            ### chatgpt fix
+            # if src_key_padding_mask is not None: 
+            if isinstance(src_key_padding_mask, torch.Tensor):
                 src_key_padding_mask = src_key_padding_mask.to(self.device)
                 src_key_padding_mask_cls = torch.zeros((B, 1), device=self.device, dtype=bool)
                 src_key_padding_mask = torch.concat([src_key_padding_mask_cls, src_key_padding_mask], dim=1)# [Batch, L]

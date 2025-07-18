@@ -8,7 +8,8 @@ from .augmentations.augmentations_3d import ImageOrSubjectToTensor, RescaleInten
 
 class LIDC_Dataset3D(data.Dataset):
     # PATH_ROOT = Path('/home/gustav/Coscine_Public/LIDC-IDRI/')
-    PATH_ROOT = Path('/home/gustav/Documents/datasets/LIDC-IDRI/')
+    # PATH_ROOT = Path('/home/gustav/Documents/datasets/LIDC-IDRI/')
+    PATH_ROOT = Path('/radraid2/mwahianwar/LIDC/')
     LABEL = 'Malignant'
 
     def __init__(
@@ -74,7 +75,9 @@ class LIDC_Dataset3D(data.Dataset):
         item = self.df.loc[uid]
         target =  item[self.LABEL]
         nodule_idx = item['nodule_idx']
-        rel_path = Path(item['patient_id'])/item['study_instance_uid']/item['series_instance_uid']
+        # MWW 071625
+        # rel_path = Path(item['patient_id'])/item['study_instance_uid']/item['series_instance_uid']
+        rel_path = Path(item['patient_id'])
         path_dir = self.path_root_data/rel_path
 
         filename = f'img_{nodule_idx}.nii.gz'

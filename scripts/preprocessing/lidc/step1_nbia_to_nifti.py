@@ -16,6 +16,19 @@ import pylidc as pl
 from multiprocessing import Pool
 
 
+# pl.config["dicom"] = {
+#     "path": "/radraid2/mwahianwar/LIDC/download/TCIA_LIDC-IDRI_20200921/LIDC-IDRI",
+#     "warn": True,
+# }
+from pathlib import Path
+
+# Override the method at runtime
+def patched_get_path_to_dicom_files(self):
+    # base_path = "/radraid2/mwahianwar/LIDC/data/TCIA_LIDC-IDRI_20200921/LIDC-IDRI"
+    base_path = "/radraid2/mwahianwar/LIDC/data/LIDC-IDRI-pylidc"
+    return str(Path(base_path) / self.patient_id)
+
+pl.Scan.get_path_to_dicom_files = patched_get_path_to_dicom_files
 
 
 
@@ -34,19 +47,70 @@ def maybe_convert(x):
         return x 
 
 
+# def dataset2dict(ds, exclude=['PixelData', '']):
+#     return {keyword:value for key in ds.keys() 
+#             if ((keyword := ds[key].keyword) not in exclude)  and ((value := maybe_convert(ds[key].value)) is not None) }
 def dataset2dict(ds, exclude=['PixelData', '']):
-    return {keyword:value for key in ds.keys() 
-            if ((keyword := ds[key].keyword) not in exclude)  and ((value := maybe_convert(ds[key].value)) is not None) }
+    out = {}
+    for key in ds.keys():
+        keyword = ds[key].keyword
+        if keyword in exclude:
+            continue
+        value = maybe_convert(ds[key].value)
+        if value is not None:
+            out[keyword] = value
+    return out
 
+# def scan2nifti(scan_id):
+#     print(scan_id)
+#     scan = pl.query(pl.Scan).filter(pl.Scan.id == scan_id).first()
+
+#     # # Get path to series
+#     # path_series = Path(scan.get_path_to_dicom_files())
+def get_series_uids_in_dir(path):
+    uids = set()
+    for dcm_path in Path(path).glob("*.dcm"):
+        try:
+            ds = pydicom.dcmread(dcm_path, stop_before_pixels=True)
+            uids.add(ds.SeriesInstanceUID)
+        except Exception as e:
+            print(f"Failed to read {dcm_path}: {e}")
+    return uids
 
 def scan2nifti(scan_id):
+    print(scan_id)
     scan = pl.query(pl.Scan).filter(pl.Scan.id == scan_id).first()
+    if scan is None:
+        logger.warning(f"Scan ID {scan_id} not found.")
+        return None
 
-    # Get path to series
     path_series = Path(scan.get_path_to_dicom_files())
+    print(path_series)
+    if not path_series.exists():
+        logger.warning(f"Scan path not found: {path_series}")
+        return None
+    # Try loading images first
+    try:
+        images = scan.load_all_dicom_images()
+        if not images:
+
+            print("Expected UID:", scan.series_instance_uid)
+            print("UIDs found in folder:", get_series_uids_in_dir(path_series))            
+            logger.warning(f"No DICOM slices found for {scan.patient_id} at {path_series}")
+            return None
+    except Exception as e:
+        logger.warning(f"Failed to load DICOM slices for {scan.patient_id}: {e}")
+        return None
+
+    # Proceed to volume creation
+    try:
+        img_pl = scan.to_volume()
+    except Exception as e:
+        logger.warning(f"Failed to convert to volume for {scan.patient_id}: {e}")
+        return None
 
     # Read DICOM
-    img_pl = scan.to_volume()
+    # img_pl = scan.to_volume()
     affine = torch.zeros((4,4))
     affine[0, 0] = scan.spacings[0]
     affine[1, 1] = scan.spacings[1]
@@ -83,8 +147,10 @@ if __name__ == "__main__":
     # Follow instructions: https://pylidc.github.io/install.html
 
     # Setting 
-    path_root = Path('/home/gustav/Coscine_Public/LIDC-IDRI')
-    path_root_in = path_root/'download/TCIA_LIDC-IDRI_20200921/LIDC-IDRI'
+    # path_root = Path('/home/gustav/Coscine_Public/LIDC-IDRI')
+    path_root = Path('/radraid2/mwahianwar/LIDC')
+    # path_root_in = path_root/'data/TCIA_LIDC-IDRI_20200921/LIDC-IDRI'
+    path_root_in = path_root/'data/LIDC-IDRI-pylidc'
     path_root_out = path_root/'preprocessed'
     path_root_out_data = path_root_out/'data'
     path_root_out_data.mkdir(parents=True, exist_ok=True)
@@ -102,18 +168,25 @@ if __name__ == "__main__":
 
     # Get all scans 
     scan_ids = range(1, len(list(pl.query(pl.Scan)))+1)
-
+    # scan_ids = [136, 316, 333, 357, 447, 489, 568, 843, 844, 845, 846, 847, 848, 849, 851, 945]
+    # scan_ids = [136, 316, 447, 489]
+    scan_ids = [9,10]
+    # scan_ids = [7, 315, 334, 358, 446, 490]
     # Option 1: Multi-CPU 
-    metadata_list = []
-    with Pool() as pool:
-        for meta in tqdm(pool.imap_unordered(scan2nifti, scan_ids), total=len(scan_ids)):
-            metadata_list.append(meta)
+    # metadata_list = []
+    # with Pool() as pool:
+    #     for meta in tqdm(pool.imap_unordered(scan2nifti, scan_ids), total=len(scan_ids)):
+    #         metadata_list.append(meta)
 
     # Option 2: Single-CPU (if you need a coffee break)
-    # metadata_list = []
-    # for scan_id in tqdm(scan_ids):
-    #     meta = scan2nifti(scan_id)
-    #     metadata_list.append(meta)
+    metadata_list = []
+    failed_ids = []
+    for scan_id in tqdm(scan_ids):
+        meta = scan2nifti(scan_id)
+        if meta is not None:
+            metadata_list.append(meta)
+        else:
+            failed_ids.append(scan_id)
 
     # Check export 
     path_exports = [path.relative_to(path_root_out) for path in path_root_out.rglob('img.nii.gz')]
@@ -121,6 +194,21 @@ if __name__ == "__main__":
     print("Exported Patients:", len(num_patients), " of 1010")
     print("Exported Studies:", len(path_exports), " of 1018 (pylidc) or 1308 (TCIA)")
 
-    # Save metadata 
-    df = pd.DataFrame(metadata_list)
-    df.to_csv(path_root_out/'metadata.csv', index=False)
+
+    # failed_ids = []
+    # for scan_id in tqdm(scan_ids):
+    #     meta = scan2nifti(scan_id)
+    #     if meta is not None:
+    #         metadata_list.append(meta)
+    #     else:
+    #         failed_ids.append(scan_id)
+
+    logger.info(f"Failed scan IDs: {failed_ids}")
+
+
+    df = pd.DataFrame([m for m in metadata_list if m is not None])
+    
+    # # Save metadata 
+    # df = pd.DataFrame(metadata_list)
+    # df.to_csv(path_root_out/'metadata_final_2.csv', index=False)
+    

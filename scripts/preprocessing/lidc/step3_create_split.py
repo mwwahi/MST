@@ -4,7 +4,8 @@ import pandas as pd
 
 from sklearn.model_selection import StratifiedGroupKFold, StratifiedKFold
 
-path_root = Path('/home/gustav/Coscine_Public/LIDC-IDRI/preprocessed')
+# path_root = Path('/home/gustav/Coscine_Public/LIDC-IDRI/preprocessed')
+path_root = Path('/radraid2/mwahianwar/LIDC/preprocessed')
 df = pd.read_csv(path_root/'annotation.csv')
 
 # Note:  875 patients have a Nodule>=3mm 
