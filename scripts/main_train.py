@@ -2,6 +2,13 @@ import argparse
 from pathlib import Path
 from datetime import datetime
 import wandb 
+
+
+#### remove this if you want to use wandb ###
+import os
+os.environ["WANDB_MODE"] = "offline"
+
+
 import torch 
 from pytorch_lightning.trainer import Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
@@ -11,7 +18,9 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 
 from mst.data.datasets.dataset_3d_duke import DUKE_Dataset3D
 from mst.data.datasets.dataset_3d_lidc import LIDC_Dataset3D
-# from mst.data.datasets.dataset_3d_luna25 import LUNA25_Dataset3D
+from mst.data.datasets.dataset_3d_luna25 import LUNA25_Dataset3D
+from mst.data.datasets.dataset_3d_duke_lcs import DUKELCS_Dataset3D
+from mst.data.datasets.dataset_3d_duke_lcs_withmask import DUKELCS_Dataset3D_Withmask
 from mst.data.datasets.dataset_3d_mrnet import MRNet_Dataset3D
 
 from mst.data.datamodules import DataModule
@@ -23,8 +32,12 @@ def get_dataset(name, split, **kwargs):
         return DUKE_Dataset3D(split=split, **kwargs)
     elif name == 'LIDC':
         return LIDC_Dataset3D(split=split, **kwargs)
-    # elif name == 'LUNA25':
-    #     return LUNA25_Dataset3D(split=split, **kwargs)
+    elif name == 'LUNA25':
+        return LUNA25_Dataset3D(split=split, **kwargs)
+    elif name == 'DUKELCS':
+        return DUKELCS_Dataset3D(split=split, **kwargs)
+    elif name == 'DUKELCS_WMASK':
+        return DUKELCS_Dataset3D_Withmask(split=split, **kwargs)
     elif name == 'MRNet':
         return MRNet_Dataset3D(split=split, **kwargs)
     else:
@@ -42,7 +55,7 @@ def get_model(name, **kwargs):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, required=True, choices=['DUKE', 'LIDC', 'MRNet'])
+    parser.add_argument('--dataset', type=str, required=True, choices=['DUKE', 'LIDC', 'MRNet', 'LUNA25', 'DUKELCS','DUKELCS_WMASK'])
     parser.add_argument('--model', type=str, required=True, choices=['ResNet', 'ResNetSliceTrans', 'DinoV2ClassifierSlice'])
     parser.add_argument('--path_root_output', type=str, default='./runs', help="Root output path")
     args = parser.parse_args()

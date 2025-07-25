@@ -18,6 +18,9 @@ from monai.metrics import compute_average_surface_distance, compute_iou, DiceMet
 from mst.data.datasets.dataset_3d_duke import DUKE_Dataset3D
 from mst.data.datasets.dataset_3d_lidc import LIDC_Dataset3D
 from mst.data.datasets.dataset_3d_mrnet import MRNet_Dataset3D
+from mst.data.datasets.dataset_3d_luna25 import LUNA25_Dataset3D
+from mst.data.datasets.dataset_3d_duke_lcs import DUKELCS_Dataset3D
+from mst.data.datasets.dataset_3d_duke_lcs_withmask import DUKELCS_Dataset3D_Withmask
 from mst.data.datamodules import DataModule
 from mst.models.resnet import ResNet, ResNetSliceTrans
 from mst.models.dino import DinoV2ClassifierSlice
@@ -31,6 +34,12 @@ def get_dataset(name, split, **kwargs):
         return LIDC_Dataset3D(split=split, **kwargs)
     elif name == 'MRNet':
         return MRNet_Dataset3D(split=split, **kwargs)
+    elif name == 'LUNA25':
+        return LUNA25_Dataset3D(split=split, **kwargs)
+    elif name == 'DUKELCS':
+        return DUKELCS_Dataset3D(split=split, **kwargs)
+    elif name == 'DUKELCS_WMASK':
+        return DUKELCS_Dataset3D_Withmask(split=split, **kwargs)
     else:
         raise ValueError(f"Unknown dataset: {name}")
 
