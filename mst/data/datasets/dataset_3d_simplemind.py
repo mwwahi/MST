@@ -6,10 +6,10 @@ import torch
 
 from .augmentations.augmentations_3d import ImageOrSubjectToTensor, RescaleIntensity, ZNormalization, CropOrPad
 
-class LUNA25_Dataset3D(data.Dataset):
+class SimpleMind_Dataset3D(data.Dataset):
     # PATH_ROOT = Path('/home/gustav/Coscine_Public/LIDC-IDRI/')
     # PATH_ROOT = Path('/home/gustav/Documents/datasets/LIDC-IDRI/')
-    PATH_ROOT = Path('/radraid2/mwahianwar/MST/luna25')
+    # PATH_ROOT = Path('/radraid2/mwahianwar/MST/luna25')
     LABEL = 'Malignant'
 
     def __init__(
@@ -28,8 +28,10 @@ class LUNA25_Dataset3D(data.Dataset):
             noise=False, 
             to_tensor = True,
         ):
-        self.path_root = self.PATH_ROOT if path_root is None else Path(path_root)
-        self.path_root_data = self.path_root/'preprocessed_crop_sngan'
+        # self.path_root = self.PATH_ROOT if path_root is None else Path(path_root)
+        if path_root is None: raise()
+        self.path_root = Path(path_root)
+        # self.path_root_data = Path(path_root)
         self.split =  split
 
         ###### IF YOU HAVE A MASK THEN MAKE THIS INTO `mask` #####
@@ -59,7 +61,7 @@ class LUNA25_Dataset3D(data.Dataset):
 
 
         # Get split file 
-        path_csv = self.path_root/'split.csv'
+        path_csv = self.path_root
         path_or_stream = path_csv 
         self.df = self.load_split(path_or_stream, fold=fold, split=split, fraction=fraction)#.set_index('scan_id', drop=True)
         self.item_pointers = self.df.index.tolist()
@@ -80,24 +82,28 @@ class LUNA25_Dataset3D(data.Dataset):
         uid = self.item_pointers[index]
         item = self.df.loc[uid]
         target =  item[self.LABEL]
-        nodule_idx = item['LesionID']
+        # nodule_idx = item['LesionID']
         # MWW 071625
         # rel_path = Path(item['patient_id'])/item['study_instance_uid']/item['series_instance_uid']
-        rel_path = Path(str(item['SeriesInstanceUID']))
-        path_dir = self.path_root_data/rel_path
+        # rel_path = Path(str(item['SeriesInstanceUID']))
+        # path_dir = self.path_root_data/rel_path
 
-        filename = f'img_{nodule_idx}.nii.gz'
-        img_org = self.load_img(path_dir/filename)
-
+        # filename = f'img_{nodule_idx}.nii.gz'
+        img_org = self.load_img(str(item['ImageFilePath']))
+        # img_org = Path(str(item['ImageFilePath']))
+        rel_path = Path(str(item['ImageID']))
+        filename = Path(item['ImageFilePath']).name
         #### IF MASK IS MADE THEN DEFINE THIS ACCORDING TO WHATS IN THE CSV ###
-        filename = f'seg_{nodule_idx}.nii.gz'
-        mask = self.load_map(path_dir/filename)
+        # filename = f'seg_{nodule_idx}.nii.gz'
+        # mask = self.load_map(path_dir/filename)
+        mask = self.load_map(Path(str(item['MaskFilePath'])))
         #mask = None
         
         masks = {}
-        #### FOR LUNA25 JUST MAKE THIS THE SINGULAR MASK #### 
+        #### FOR SM JUST MAKE THIS THE SINGULAR MASK #### 
         if self.split == "test":
-            masks[f'mask_'] = self.load_map(path_dir/f"seg_{nodule_idx}.nii.gz" ) 
+            # masks[f'mask_'] = self.load_map(path_dir/f"seg_{nodule_idx}.nii.gz" ) 
+            masks[f'mask_'] = self.load_map(Path(str(item['MaskFilePath']))) 
                     
         
         subj = tio.Subject(img=img_org, mask=mask, **masks)
@@ -107,6 +113,7 @@ class LUNA25_Dataset3D(data.Dataset):
         
         if self.split == "test":
             masks = {key: subj[key] for key in masks.keys()}
+        
 
         return {'uid':uid, 
                 'source': img, 

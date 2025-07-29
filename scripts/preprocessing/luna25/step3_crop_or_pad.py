@@ -6,12 +6,90 @@ from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import argparse
 
+# Global variable to store the SNGAN lookup table
+sngan_lookup = None
+
+def load_sngan_lookup(lookup_csv_path):
+    """Load the SNGAN lookup table CSV"""
+    global sngan_lookup
+    try:
+        lookup_df = pd.read_csv(lookup_csv_path)
+        # Create a dictionary mapping from key (SeriesInstanceUID) to SNGAN path
+        sngan_lookup = {}
+        for _, row in lookup_df.iterrows():
+            key = row['key']
+            sngan_path = row['SNGAN']
+            if pd.notna(sngan_path) and sngan_path.strip():  # Only add non-empty SNGAN paths
+                sngan_lookup[key] = sngan_path
+        print(f"Loaded SNGAN lookup table with {len(sngan_lookup)} entries")
+        return True
+    except Exception as e:
+        print(f"Error loading SNGAN lookup table: {e}")
+        return False
+
+def get_sngan_image_path(uid):
+    """Get the SNGAN preprocessed image path for a given SeriesInstanceUID"""
+    global sngan_lookup
+    if sngan_lookup and uid in sngan_lookup:
+        sngan_path = sngan_lookup[uid]
+        # Convert to Path object
+        return Path(sngan_path)
+    return None
+
+def align_image_to_reference(image, reference_image):
+    """
+    Align SNGAN image to match the reference image orientation.
+    Based on logs and visual misalignment: Y-axis flip needed.
+    """
+    try:
+        print("=== Performing SNGAN Alignment ===")
+        
+        # Convert to numpy array
+        img_array = sitk.GetArrayFromImage(image)  # Z,Y,X
+        print(f"Original SNGAN shape: {img_array.shape}")
+        
+        img_array_transposed = np.transpose(img_array, (0, 2, 1))
+        print(f"After transpose Y,X: {img_array_transposed.shape}")
+        
+        # Step 2: Flip X axis (axis=2 after transpose)
+        img_array_aligned = np.flip(img_array_transposed, axis=2)
+        print(f"After flip X: {img_array_aligned.shape}")
+        
+        
+        # Create new image with aligned data
+        aligned_image = sitk.GetImageFromArray(img_array_aligned)
+        
+        # Copy spatial properties from reference
+        aligned_image.SetOrigin(reference_image.GetOrigin())
+        aligned_image.SetSpacing(reference_image.GetSpacing())
+        aligned_image.SetDirection(reference_image.GetDirection())
+        
+        return aligned_image
+        
+    except Exception as e:
+        print(f"Warning: Could not align SNGAN image: {e}")
+        return image
+
 def crop_lesion_pair(uid, lesion_id, lesion_coords, image_dir, output_dir, crop_shape, padding_value):
     """Crop both image and segmentation mask for a single lesion using SimpleITK"""
     
-    # Paths for both image and segmentation
-    img_path = image_dir / "data" / uid / "img.nii.gz"
+    # Segmentation path (always from original preprocessed data)
     seg_path = image_dir / "data" / uid / f"seg_{lesion_id}.nii.gz"
+    
+    # Try to get SNGAN preprocessed image path first
+    sngan_img_path = get_sngan_image_path(uid)
+    use_sngan = False
+    
+    if sngan_img_path and sngan_img_path.exists():
+        # Use SNGAN preprocessed image
+        img_path = sngan_img_path
+        use_sngan = True
+        print(f"Using SNGAN preprocessed image for {uid}: {img_path}")
+    else:
+        # Fallback to original preprocessed image path
+        img_path = image_dir / "data" / uid / "img.nii.gz"
+        if sngan_img_path:
+            print(f"Warning: SNGAN path not found for {uid}, falling back to: {img_path}")
     
     # Check if both files exist
     if not img_path.exists():
@@ -21,9 +99,34 @@ def crop_lesion_pair(uid, lesion_id, lesion_coords, image_dir, output_dir, crop_
         return f"Missing segmentation: {seg_path}"
 
     try:
-        # Load both image and segmentation with SimpleITK
-        image = sitk.ReadImage(str(img_path))
+        # Load segmentation first (this is our reference space)
         segmentation = sitk.ReadImage(str(seg_path))
+        
+        # Load image
+        image = sitk.ReadImage(str(img_path))
+        
+        # If using SNGAN image, align it to the segmentation space
+        if use_sngan:
+            # Load the original reference image to check for spatial differences
+            ref_img_path = image_dir / "data" / uid / "img.nii.gz"
+            if ref_img_path.exists():
+                try:
+                    reference_image = sitk.ReadImage(str(ref_img_path))
+                    print("ref_shape", reference_image.GetSize())
+                    
+                    # Check if SNGAN image has different spatial properties
+                    if (image.GetOrigin() != reference_image.GetOrigin() or 
+                        image.GetSpacing() != reference_image.GetSpacing() or 
+                        image.GetDirection() != reference_image.GetDirection() or
+                        image.GetSize() != reference_image.GetSize()):
+                        
+                        print(f"Aligning SNGAN image to reference space for {uid}")
+                        image = align_image_to_reference(image, reference_image)
+
+                    print("image_shape", image.GetSize())
+                        
+                except Exception as e:
+                    print(f"Warning: Could not load reference image for alignment: {e}")
         
     except Exception as e:
         return f"Failed to load files for {uid}_{lesion_id}: {e}"
@@ -139,13 +242,14 @@ def crop_case(uid_df_tuple):
 
 ### Usage:
 # python step3_crop_simpleitk.py --sequential 
-# python step3_crop_simpleitk.py --num_workers 20 
+# python /cvib2/apps/personal/wasil/lib/classification/MST/scripts/preprocessing/luna25/step3_crop_or_pad.py --num_workers 20 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Crop both image and segmentation files using SimpleITK")
+    parser = argparse.ArgumentParser(description="Crop both image and segmentation files using SimpleITK with SNGAN preprocessed images")
     parser.add_argument('--csv_path', default='/radraid2/mwahianwar/miccai25/luna25challenge/data/LUNA25_Public_Training_Development_Data.csv', type=str)
     parser.add_argument('--preprocessed_image_dir', default='/radraid2/mwahianwar/MST/luna25/preprocessed', type=str)
-    parser.add_argument('--output_dir', default='/radraid2/mwahianwar/MST/luna25/preprocessed_crop', type=str)
+    parser.add_argument('--output_dir', default='/radraid2/mwahianwar/MST/luna25/preprocessed_crop_sngan', type=str)
+    parser.add_argument('--sngan_lookup_csv', default='/cvib2/apps/personal/wasil/lib/classification/MST/ctnorm_lookup.csv', type=str, help="Path to the SNGAN lookup CSV file")
     parser.add_argument('--num_workers', type=int, default=8, help="Number of parallel workers")
     parser.add_argument('--sequential', action='store_true', help="Run sequentially instead of parallel")
 
@@ -154,13 +258,19 @@ if __name__ == "__main__":
     csv_path = Path(args.csv_path)
     image_dir = Path(args.preprocessed_image_dir)
     output_dir = Path(args.output_dir)
+    sngan_lookup_csv = Path(args.sngan_lookup_csv)
+    
+    # Load SNGAN lookup table
+    if not load_sngan_lookup(sngan_lookup_csv):
+        print(f"ERROR: Could not load SNGAN lookup table from: {sngan_lookup_csv}")
+        exit(1)
     
     # Check permissions and create output directory
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
     except PermissionError:
         print(f"ERROR: No permission to create directory: {output_dir}")
-        print(f"Try running with: --output_dir ./preprocessed_crop")
+        print(f"Try running with: --output_dir ./preprocessed_crop_sngan")
         exit(1)
 
     # Read and validate CSV
@@ -176,12 +286,15 @@ if __name__ == "__main__":
     crop_shape = (256, 256, 32)  # (x, y, z)
     padding_value = -1024
 
-    print(f"SimpleITK Cropping Summary:")
+    print(f"SimpleITK Cropping with SNGAN Complete Alignment:")
     print(f"Total series to process: {len(grouped)}")
     print(f"Total lesions to process: {len(df)}")
+    print(f"SNGAN lookup entries: {len(sngan_lookup) if sngan_lookup else 0}")
     print(f"Crop shape (X,Y,Z): {crop_shape}")
     print(f"Input directory: {image_dir}")
     print(f"Output directory: {output_dir}")
+    print(f"SNGAN lookup CSV: {sngan_lookup_csv}")
+    print(f"Complete alignment: ENABLED (axis ordering + spatial metadata)")
 
     # Check if input directory structure exists
     data_dir = image_dir / "data"
@@ -193,19 +306,19 @@ if __name__ == "__main__":
     # Count available files
     available_images = list(data_dir.glob("*/img.nii.gz"))
     available_segs = list(data_dir.glob("*/seg_*.nii.gz"))
-    print(f"Found {len(available_images)} images and {len(available_segs)} segmentations")
+    print(f"Found {len(available_images)} original images and {len(available_segs)} segmentations")
 
     errors = []
 
     if args.sequential:
-        for uid_df in tqdm(grouped, desc="Cropping pairs (Sequential)"):
+        for uid_df in tqdm(grouped, desc="Cropping pairs with SNGAN Complete Alignment (Sequential)"):
             err = crop_case(uid_df)
             if err:
                 errors.extend(err if isinstance(err, list) else [err])
     else:
         with ProcessPoolExecutor(max_workers=args.num_workers) as executor:
             futures = {executor.submit(crop_case, uid_df): uid_df[0] for uid_df in grouped}
-            for future in tqdm(as_completed(futures), total=len(futures), desc="Cropping pairs (Parallel)"):
+            for future in tqdm(as_completed(futures), total=len(futures), desc="Cropping pairs with SNGAN Complete Alignment (Parallel)"):
                 result = future.result()
                 if result:
                     errors.extend(result if isinstance(result, list) else [result])
@@ -219,7 +332,7 @@ if __name__ == "__main__":
     other_errors = len(errors) - missing_images - missing_segs - out_of_bounds
     successful_lesions = total_lesions - len(errors)
     
-    print(f"\nSimpleITK Cropping Complete:")
+    print(f"\nSimpleITK Cropping with SNGAN Complete Alignment Complete:")
     print(f"Total series: {total_series}")
     print(f"Total lesions processed: {total_lesions}")
     print(f"Missing images: {missing_images}")
@@ -259,124 +372,3 @@ if __name__ == "__main__":
                     print(f"    ... and {total_pairs - 2} more pairs in {d.name}")
         if len(created_dirs) > 3:
             print(f"  ... and {len(created_dirs) - 3} more series")
-# from pathlib import Path
-# import torchio as tio
-# import torch
-# import pandas as pd
-# import numpy as np
-# from tqdm import tqdm
-# from concurrent.futures import ProcessPoolExecutor, as_completed
-# import argparse
-
-# print("TorchIO version:", tio.__version__)
-# print("CropOrPad init signature:", tio.CropOrPad.__init__.__annotations__)
-
-# def crop_case(uid_df_tuple):
-#     uid, rows = uid_df_tuple
-#     img_path = image_dir / f"{uid}.nii.gz"
-#     if not img_path.exists():
-#         return f"Missing image: {img_path}"
-
-#     try:
-#         image = tio.ScalarImage(img_path)
-#     except Exception as e:
-#         return f"Failed to load image {uid}: {e}"
-
-#     affine = image.affine
-#     inv_affine = np.linalg.inv(affine)
-#     data_shape = np.array(image.shape[1:])  # (D, H, W)
-
-#     errors = []
-
-#     for idx, row in rows.iterrows():
-#         x, y, z = row["CoordX"], row["CoordY"], row["CoordZ"]
-#         lesion_id = row.get("LesionID", idx)
-
-#         # Convert physical to voxel
-#         physical_coords = np.array([[x], [y], [z], [1.0]])
-#         voxel_coords = inv_affine @ physical_coords
-#         voxel_center = np.round(voxel_coords[:3].flatten()).astype(int)
-
-#         half_crop = np.array(crop_shape) // 2
-#         start = voxel_center - half_crop
-#         end = start + np.array(crop_shape)
-
-#         # Clamp to bounds
-#         start = np.maximum(start, 0)
-#         end = np.minimum(end, data_shape)
-
-#         # Calculate slices
-#         slices = tuple(slice(s, e) for s, e in zip(start, end))
-
-#         # Apply crop via numpy slicing
-#         cropped_tensor = image.data[:, slices[0], slices[1], slices[2]]
-
-#         # Pad if necessary to reach exact crop_shape
-#         pad_width = []
-#         for i, (s, e, target) in enumerate(zip(start, end, crop_shape)):
-#             actual = e - s
-#             pad_total = max(target - actual, 0)
-#             pad_before = pad_total // 2
-#             pad_after = pad_total - pad_before
-#             pad_width.append((pad_before, pad_after))
-
-#         pad_width = [(0, 0)] + pad_width  # No padding on channels
-#         cropped_tensor = torch.nn.functional.pad(cropped_tensor, [p for dim in reversed(pad_width[1:]) for p in dim], value=padding_value)
-
-#         # Save
-#         out_dir = output_dir / uid
-#         out_dir.mkdir(parents=True, exist_ok=True)
-#         out_path = out_dir / f"img_{lesion_id}.nii.gz"
-
-#         cropped_img = tio.ScalarImage(tensor=cropped_tensor, affine=image.affine)
-#         try:
-#             cropped_img.save(out_path)
-#         except Exception as e:
-#             errors.append(f"Failed to save crop {uid} at {x,y,z}: {e}")
-
-#     return errors if errors else None
-
-# # python /cvib2/apps/personal/wasil/lib/classification/MST/scripts/preprocessing/luna25/step3_crop_or_pad.py --sequential 
-# # python /cvib2/apps/personal/wasil/lib/classification/MST/scripts/preprocessing/luna25/step3_crop_or_pad.py --num_workers 20 
-
-# if __name__ == "__main__":
-#     parser = argparse.ArgumentParser()
-#     parser.add_argument('--csv_path', default='/radraid2/mwahianwar/miccai25/luna25challenge/data/LUNA25_Public_Training_Development_Data.csv', type=str)
-#     parser.add_argument('--preprocessed_image_dir', default='/radraid2/mwahianwar/MST/luna25/preprocessed', type=str)
-#     parser.add_argument('--output_dir', default='/radraid2/mwahianwar/MST/luna25/preprocessed_crop', type=str)
-#     parser.add_argument('--num_workers', type=int, default=8, help="Number of parallel workers")
-#     parser.add_argument('--sequential', action='store_true', help="Run sequentially instead of parallel")
-
-#     args = parser.parse_args()
-
-#     csv_path = Path(args.csv_path)
-#     image_dir = Path(args.preprocessed_image_dir)
-#     output_dir = Path(args.output_dir)
-#     output_dir.mkdir(parents=True, exist_ok=True)
-
-#     df = pd.read_csv(csv_path)
-#     df = df.dropna(subset=["SeriesInstanceUID", "CoordX", "CoordY", "CoordZ"])
-#     grouped = list(df.groupby("SeriesInstanceUID"))  # Convert to list of (uid, DataFrame)
-
-#     crop_shape = (256, 256, 32)
-#     padding_value = -1024
-
-#     errors = []
-
-#     if args.sequential:
-#         for uid_df in tqdm(grouped, desc="Cropping (Sequential)"):
-#             err = crop_case(uid_df)
-#             if err:
-#                 errors.extend(err if isinstance(err, list) else [err])
-#     else:
-#         with ProcessPoolExecutor(max_workers=args.num_workers) as executor:
-#             futures = {executor.submit(crop_case, uid_df): uid_df[0] for uid_df in grouped}
-#             for future in tqdm(as_completed(futures), total=len(futures), desc="Cropping (Parallel)"):
-#                 result = future.result()
-#                 if result:
-#                     errors.extend(result if isinstance(result, list) else [result])
-
-#     if errors:
-#         print("\nSome crops failed:")
-#         for e in errors:
-#             print(e)

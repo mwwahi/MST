@@ -24,6 +24,7 @@ from mst.data.datasets.dataset_3d_duke_lcs_withmask import DUKELCS_Dataset3D_Wit
 from mst.data.datamodules import DataModule
 from mst.models.resnet import ResNet, ResNetSliceTrans
 from mst.models.dino import DinoV2ClassifierSlice
+from mst.data.datasets.dataset_3d_simplemind import SimpleMind_Dataset3D
 from mst.utils.roc_curve import plot_roc_curve, cm2acc, cm2x
 from mst.models.utils.functions import tensor2image, tensor_cam2image, minmax_norm, one_hot
 
@@ -40,6 +41,8 @@ def get_dataset(name, split, **kwargs):
         return DUKELCS_Dataset3D(split=split, **kwargs)
     elif name == 'DUKELCS_WMASK':
         return DUKELCS_Dataset3D_Withmask(split=split, **kwargs)
+    elif name == 'SIMPLEMIND':
+        return SimpleMind_Dataset3D(split=split, **kwargs)
     else:
         raise ValueError(f"Unknown dataset: {name}")
 

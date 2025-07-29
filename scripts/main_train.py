@@ -22,6 +22,7 @@ from mst.data.datasets.dataset_3d_luna25 import LUNA25_Dataset3D
 from mst.data.datasets.dataset_3d_duke_lcs import DUKELCS_Dataset3D
 from mst.data.datasets.dataset_3d_duke_lcs_withmask import DUKELCS_Dataset3D_Withmask
 from mst.data.datasets.dataset_3d_mrnet import MRNet_Dataset3D
+from mst.data.datasets.dataset_3d_simplemind import SimpleMind_Dataset3D
 
 from mst.data.datamodules import DataModule
 from mst.models.resnet import ResNet, ResNetSliceTrans
@@ -38,6 +39,8 @@ def get_dataset(name, split, **kwargs):
         return DUKELCS_Dataset3D(split=split, **kwargs)
     elif name == 'DUKELCS_WMASK':
         return DUKELCS_Dataset3D_Withmask(split=split, **kwargs)
+    elif name == 'SIMPLEMIND':
+        return SimpleMind_Dataset3D(split=split, **kwargs)
     elif name == 'MRNet':
         return MRNet_Dataset3D(split=split, **kwargs)
     else:
