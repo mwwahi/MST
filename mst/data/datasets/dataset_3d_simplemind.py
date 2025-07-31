@@ -10,6 +10,7 @@ class SimpleMind_Dataset3D(data.Dataset):
     # PATH_ROOT = Path('/home/gustav/Coscine_Public/LIDC-IDRI/')
     # PATH_ROOT = Path('/home/gustav/Documents/datasets/LIDC-IDRI/')
     # PATH_ROOT = Path('/radraid2/mwahianwar/MST/luna25')
+    PATH_ROOT = Path('/radraid2/mwahianwar/miccai25/luna25challenge/runs/combined_dataset_preprocess/nn_classification_lung_nodule_classification/17539786785286/mst_input.csv')
     LABEL = 'Malignant'
 
     def __init__(
@@ -28,10 +29,7 @@ class SimpleMind_Dataset3D(data.Dataset):
             noise=False, 
             to_tensor = True,
         ):
-        # self.path_root = self.PATH_ROOT if path_root is None else Path(path_root)
-        if path_root is None: raise()
-        self.path_root = Path(path_root)
-        # self.path_root_data = Path(path_root)
+        self.path_root = self.PATH_ROOT if path_root is None else Path(path_root)
         self.split =  split
 
         ###### IF YOU HAVE A MASK THEN MAKE THIS INTO `mask` #####
@@ -63,7 +61,9 @@ class SimpleMind_Dataset3D(data.Dataset):
         # Get split file 
         path_csv = self.path_root
         path_or_stream = path_csv 
+        print(f"Loading path_csv: {path_csv} 👍👍 >>>")
         self.df = self.load_split(path_or_stream, fold=fold, split=split, fraction=fraction)#.set_index('scan_id', drop=True)
+        print(f"self.df: {self.df} 👍👍")
         self.item_pointers = self.df.index.tolist()
 
         
@@ -78,9 +78,10 @@ class SimpleMind_Dataset3D(data.Dataset):
 
     def __getitem__(self, index):
         ### PatientID,SeriesInstanceUID,StudyDate,CoordX,CoordY,CoordZ,LesionID,AnnotationID,NoduleID,label,Age_at_StudyDate,Gender,Malignant,Fold,Split
-
-        uid = self.item_pointers[index]
-        item = self.df.loc[uid]
+        print("GETTING ITEM 👍👍")
+        uid_index = self.item_pointers[index]
+        item = self.df.loc[uid_index]
+        uid = str(item['UniqueID'])
         target =  item[self.LABEL]
         # nodule_idx = item['LesionID']
         # MWW 071625
@@ -127,9 +128,13 @@ class SimpleMind_Dataset3D(data.Dataset):
     @classmethod
     def load_split(cls, filepath_or_buffer=None, fold=0, split=None, fraction=None):
         df = pd.read_csv(filepath_or_buffer)
+        print(f"Loading df: {df} 🤯🤯 >>>")
         df = df[df['Fold'] == fold]
+        print(f"after FOLD {fold} df: {df} 🤯🤯 >>>")
         if split is not None:
             df = df[df['Split'] == split]   
+        print(f"after SPLIT {split} df: {df} 🤯🤯 >>>")
         if fraction is not None:
             df = df.sample(frac=fraction, random_state=0).reset_index()
+        print(f"after FRACTION {fraction} df: {df} 🤯🤯 >>>")
         return df

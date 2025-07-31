@@ -58,7 +58,7 @@ def get_model(name, **kwargs):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, required=True, choices=['DUKE', 'LIDC', 'MRNet', 'LUNA25', 'DUKELCS','DUKELCS_WMASK'])
+    parser.add_argument('--dataset', type=str, required=True, choices=['DUKE', 'LIDC', 'MRNet', 'LUNA25', 'DUKELCS','DUKELCS_WMASK', 'SIMPLEMIND'])
     parser.add_argument('--model', type=str, required=True, choices=['ResNet', 'ResNetSliceTrans', 'DinoV2ClassifierSlice'])
     parser.add_argument('--path_root_output', type=str, default='./runs', help="Root output path")
     args = parser.parse_args()
