@@ -82,7 +82,7 @@ class SimpleMind_Dataset3D(data.Dataset):
         uid_index = self.item_pointers[index]
         item = self.df.loc[uid_index]
         uid = str(item['UniqueID'])
-        target =  item[self.LABEL]
+        target =  item.get(self.LABEL, 0)
         # nodule_idx = item['LesionID']
         # MWW 071625
         # rel_path = Path(item['patient_id'])/item['study_instance_uid']/item['series_instance_uid']
