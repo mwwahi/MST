@@ -35,7 +35,7 @@ def convert_case(uid, image_dir, output_dir):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=" Moving NIfTI file")
     parser.add_argument('--csv_path', default='/radraid2/mwahianwar/duke_lcs/data/DLCSD24_Annotations.csv', type=str)
-    parser.add_argument('--image_dir', default='/radraid2/mwahianwar/MST/duke_lcs/preprocessed_v0', type=str)
+    parser.add_argument('--image_dir', default='/radraid2/mwahianwar/duke_lcs/data/combined_data', type=str)
     # FIXED: Changed default output directory to avoid permission issues
     parser.add_argument('--output_dir', default='/radraid2/mwahianwar/MST/duke_lcs/preprocessed', type=str)
     parser.add_argument('--num_workers', type=int, default=8, help="Number of parallel processes")

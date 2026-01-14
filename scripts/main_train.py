@@ -60,6 +60,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True, choices=['DUKE', 'LIDC', 'MRNet', 'LUNA25', 'DUKELCS','DUKELCS_WMASK', 'SIMPLEMIND'])
     parser.add_argument('--model', type=str, required=True, choices=['ResNet', 'ResNetSliceTrans', 'DinoV2ClassifierSlice'])
+    parser.add_argument('--path_root_input', type=str, default=None, help="Root input path")
     parser.add_argument('--path_root_output', type=str, default='./runs', help="Root output path")
     args = parser.parse_args()
 
@@ -71,8 +72,8 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision('high')
 
     # ------------ Load Data ----------------
-    ds_train = get_dataset(args.dataset, split='train', flip=True, noise=True, random_center=True, random_rotate=True)
-    ds_val = get_dataset(args.dataset, split='val')
+    ds_train = get_dataset(args.dataset, split='train', flip=True, noise=True, random_center=True, random_rotate=True, path_root=args.path_root_input)
+    ds_val = get_dataset(args.dataset, split='val', path_root=args.path_root_input)
     
     samples = len(ds_train) + len(ds_val)
     batch_size = 2 

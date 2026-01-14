@@ -6,13 +6,15 @@ import torch
 
 from .augmentations.augmentations_3d import ImageOrSubjectToTensor, RescaleIntensity, ZNormalization, CropOrPad
 
-class SimpleMind_Dataset3D(data.Dataset):
+class SMNoduleSubtype_Dataset3D(data.Dataset):
     # PATH_ROOT = Path('/home/gustav/Coscine_Public/LIDC-IDRI/')
     # PATH_ROOT = Path('/home/gustav/Documents/datasets/LIDC-IDRI/')
     # PATH_ROOT = Path('/radraid2/mwahianwar/MST/luna25')
     # PATH_ROOT = Path('/radraid2/mwahianwar/miccai25/luna25challenge/runs/combined_dataset_preprocess/nn_classification_lung_nodule_classification/17539786785286/mst_input.csv')
-    PATH_ROOT = Path('/radraid2/mwahianwar/miccai25/luna25challenge/pipeline_prep/combined_data.csv')
-    LABEL = 'Malignant'
+    # PATH_ROOT = Path('/radraid2/mwahianwar/miccai25/luna25challenge/pipeline_prep/combined_data.csv')
+    # LABEL = 'Malignant'
+    # LABEL = 'subtype' ### strings don't work, must be int
+    LABEL = 'SubtypeInt'
 
     def __init__(
             self,
@@ -25,14 +27,15 @@ class SimpleMind_Dataset3D(data.Dataset):
             resample=None,
             flip = False,
             random_rotate=False,
-            image_crop = (224, 224, 32),
+            image_crop = None,
             random_center=False,
             noise=False, 
             to_tensor = True,
         ):
-        self.path_root = self.PATH_ROOT if path_root is None else Path(path_root)
+        self.path_root = Path(path_root)
         self.split =  split
-
+        if image_crop is None:
+            image_crop = (224, 224, 32)
         ###### IF YOU HAVE A MASK THEN MAKE THIS INTO `mask` #####
         # mask_name='mask'
         mask_name= 'mask'
@@ -79,6 +82,10 @@ class SimpleMind_Dataset3D(data.Dataset):
 
     def __getitem__(self, index):
         ### PatientID,SeriesInstanceUID,StudyDate,CoordX,CoordY,CoordZ,LesionID,AnnotationID,NoduleID,label,Age_at_StudyDate,Gender,Malignant,Fold,Split
+        ### Things I Need:
+        ### UniqueID, Fold, Split, Subtype, 
+        ### Maybe I Need: 
+        # ImageFilePath, ImageID
         # print("GETTING ITEM 👍👍")
         uid_index = self.item_pointers[index]
         item = self.df.loc[uid_index]

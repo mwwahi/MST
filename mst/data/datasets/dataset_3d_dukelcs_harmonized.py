@@ -6,13 +6,12 @@ import torch
 
 from .augmentations.augmentations_3d import ImageOrSubjectToTensor, RescaleIntensity, ZNormalization, CropOrPad
 
-class SimpleMind_Dataset3D(data.Dataset):
+class DUKELCS_Harmonized_Dataset3D(data.Dataset):
     # PATH_ROOT = Path('/home/gustav/Coscine_Public/LIDC-IDRI/')
     # PATH_ROOT = Path('/home/gustav/Documents/datasets/LIDC-IDRI/')
-    # PATH_ROOT = Path('/radraid2/mwahianwar/MST/luna25')
-    # PATH_ROOT = Path('/radraid2/mwahianwar/miccai25/luna25challenge/runs/combined_dataset_preprocess/nn_classification_lung_nodule_classification/17539786785286/mst_input.csv')
-    PATH_ROOT = Path('/radraid2/mwahianwar/miccai25/luna25challenge/pipeline_prep/combined_data.csv')
-    LABEL = 'Malignant'
+    PATH_ROOT = Path('/radraid2/mwahianwar/MST/duke_lcs')
+    HARMONIZED_ROOT = Path('/workspace/ctnorm/SESSIONS')
+    LABEL = 'Malignant_lbl'
 
     def __init__(
             self,
@@ -31,11 +30,14 @@ class SimpleMind_Dataset3D(data.Dataset):
             to_tensor = True,
         ):
         self.path_root = self.PATH_ROOT if path_root is None else Path(path_root)
+        self.path_root_data = self.path_root/'preprocessed_crop'
         self.split =  split
 
-        ###### IF YOU HAVE A MASK THEN MAKE THIS INTO `mask` #####
+        # Find latest CTNorm session
+        self.harmonized_data_path = self._find_harmonized_path()
+
         # mask_name='mask'
-        mask_name= 'mask'
+        mask_name=None
 
         if transform is None: 
             self.transform = tio.Compose([
@@ -60,18 +62,36 @@ class SimpleMind_Dataset3D(data.Dataset):
 
 
         # Get split file 
-        path_csv = self.path_root
+        path_csv = self.path_root/'split.csv'
         path_or_stream = path_csv 
-        print(f"Loading path_csv: {path_csv} 👍👍 >>>")
         self.df = self.load_split(path_or_stream, fold=fold, split=split, fraction=fraction)#.set_index('scan_id', drop=True)
-        print(f"self.df: {self.df} 👍👍")
         self.item_pointers = self.df.index.tolist()
 
+    def _find_harmonized_path(self):
+        """Find latest CTNorm harmonized output path"""
+        sessions_dir = self.HARMONIZED_ROOT
+        if not sessions_dir.exists():
+            return None
+        
+        sessions = [d for d in sessions_dir.iterdir() if d.is_dir()]
+        if sessions:
+            latest_session = max(sessions, key=lambda x: x.stat().st_mtime)
+            harmonized_path = latest_session / "Harmonization" / "DUKE_LCS" / "test"
+            if harmonized_path.exists():
+                return harmonized_path
+        return None
         
     def __len__(self):
         return len(self.item_pointers)
     
     def load_img(self, path_img):
+        # Try harmonized version first
+        if self.harmonized_data_path:
+            harmonized_file = self.harmonized_data_path / path_img.name
+            if harmonized_file.exists():
+                return tio.ScalarImage(harmonized_file)
+        
+        # Fallback to original
         return tio.ScalarImage(path_img)
 
     def load_map(self, path_img):   
@@ -79,33 +99,27 @@ class SimpleMind_Dataset3D(data.Dataset):
 
     def __getitem__(self, index):
         ### PatientID,SeriesInstanceUID,StudyDate,CoordX,CoordY,CoordZ,LesionID,AnnotationID,NoduleID,label,Age_at_StudyDate,Gender,Malignant,Fold,Split
-        # print("GETTING ITEM 👍👍")
-        uid_index = self.item_pointers[index]
-        item = self.df.loc[uid_index]
-        uid = str(item['UniqueID'])
-        target =  item.get(self.LABEL, 0)
-        # nodule_idx = item['LesionID']
+
+        uid = self.item_pointers[index]
+        item = self.df.loc[uid]
+        target =  item[self.LABEL]
+        nodule_idx = item['nodule_id']
         # MWW 071625
         # rel_path = Path(item['patient_id'])/item['study_instance_uid']/item['series_instance_uid']
-        # rel_path = Path(str(item['SeriesInstanceUID']))
-        # path_dir = self.path_root_data/rel_path
+        rel_path = Path(str(item['patient-id']))
+        path_dir = self.path_root_data/rel_path
 
-        # filename = f'img_{nodule_idx}.nii.gz'
-        img_org = self.load_img(str(item['ImageFilePath']))
-        # img_org = Path(str(item['ImageFilePath']))
-        rel_path = Path(str(item['ImageID']))
-        filename = Path(item['ImageFilePath']).name
-        #### IF MASK IS MADE THEN DEFINE THIS ACCORDING TO WHATS IN THE CSV ###
+        filename = f'img_{nodule_idx}.nii.gz'
+        img_org = self.load_img(path_dir/filename)
+
         # filename = f'seg_{nodule_idx}.nii.gz'
         # mask = self.load_map(path_dir/filename)
-        mask = self.load_map(Path(str(item['MaskFilePath'])))
-        #mask = None
+        mask = None
         
         masks = {}
-        #### FOR SM JUST MAKE THIS THE SINGULAR MASK #### 
-        if self.split == "test":
-            # masks[f'mask_'] = self.load_map(path_dir/f"seg_{nodule_idx}.nii.gz" ) 
-            masks[f'mask_'] = self.load_map(Path(str(item['MaskFilePath']))) 
+        # if self.split == "test":
+        #     for ann_idx in range(item['annotation_num']):
+        #         masks[f'mask_{ann_idx}'] = self.load_map(path_dir/f"seg_{nodule_idx}_{ann_idx}.nii.gz" ) 
                     
         
         subj = tio.Subject(img=img_org, mask=mask, **masks)
@@ -115,13 +129,11 @@ class SimpleMind_Dataset3D(data.Dataset):
         
         if self.split == "test":
             masks = {key: subj[key] for key in masks.keys()}
-        
 
         return {'uid':uid, 
                 'source': img, 
-                #### UNCOMMENT THESE TWO IF YOU HAVE A MASK #####
-                'mask':subj['mask'], 
-                **masks, 
+                # 'mask':subj['mask'], 
+                # **masks, 
                 'target':target, 
                 'affine':img_org.affine, 'path':str(rel_path), 'filename':filename}
     
@@ -129,13 +141,77 @@ class SimpleMind_Dataset3D(data.Dataset):
     @classmethod
     def load_split(cls, filepath_or_buffer=None, fold=0, split=None, fraction=None):
         df = pd.read_csv(filepath_or_buffer)
-        print(f"Loading df: {df} 🤯🤯 >>>")
         df = df[df['Fold'] == fold]
-        print(f"after FOLD {fold} df: {df} 🤯🤯 >>>")
         if split is not None:
             df = df[df['Split'] == split]   
-        print(f"after SPLIT {split} df: {df} 🤯🤯 >>>")
         if fraction is not None:
             df = df.sample(frac=fraction, random_state=0).reset_index()
-        print(f"after FRACTION {fraction} df: {df} 🤯🤯 >>>")
         return df
+
+
+# Convenience function to create datasets
+def create_duke_harmonized_datasets(fold=0, fraction=None, ctnorm_session=None, **kwargs):
+    """
+    Create train/val/test datasets using harmonized Duke LCS data
+    
+    Args:
+        fold (int): Cross-validation fold
+        fraction (float): Fraction of data to use (for testing)
+        ctnorm_session (str): Specific CTNorm session directory name
+        **kwargs: Additional arguments passed to dataset constructor
+        
+    Returns:
+        dict: Dictionary with 'train', 'val', 'test' datasets
+    """
+    
+    datasets = {}
+    
+    for split in ['train', 'val', 'test']:
+        datasets[split] = DUKELCS_Harmonized_Dataset3D(
+            fold=fold,
+            split=split,
+            fraction=fraction,
+            ctnorm_session=ctnorm_session,
+            **kwargs
+        )
+    
+    return datasets
+
+
+# Example usage and testing
+if __name__ == "__main__":
+    print("Testing Duke LCS Harmonized Dataset")
+    
+    # Create a small test dataset
+    try:
+        test_dataset = DUKELCS_Harmonized_Dataset3D(
+            fold=0,
+            split='train',
+            fraction=0.01,  # Use only 1% for testing
+        )
+        
+        print(f"Dataset created successfully with {len(test_dataset)} samples")
+        
+        # Test loading a few samples
+        if len(test_dataset) > 0:
+            print("\nTesting sample loading...")
+            for i in range(min(3, len(test_dataset))):
+                sample = test_dataset[i]
+                print(f"Sample {i+1}:")
+                print(f"  Shape: {sample['source'].shape}")
+                print(f"  Target: {sample['target']}")
+                print(f"  Filename: {sample['filename']}")
+            
+            # Show usage statistics
+            stats = test_dataset.get_usage_stats()
+            print(f"\nUsage Statistics:")
+            for key, value in stats.items():
+                print(f"  {key}: {value}")
+                
+        else:
+            print("No samples found in dataset")
+            
+    except Exception as e:
+        print(f"Error creating dataset: {e}")
+        import traceback
+        traceback.print_exc()
